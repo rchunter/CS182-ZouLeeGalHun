@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 import torch
 import torchvision
-import torchvision.transforms as transforms
+from torchvision import transforms
 import yaml
 
 import model as visionmodel
@@ -166,9 +166,9 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
                 if minibatch%options.print_every == 0:
                     log.debug(
                         'Training update',
-                        accuracy=train_correct/train_total,
+                        accuracy=round(train_correct/train_total, 4),
                         minibatch=minibatch, epoch=epoch,
-                        mean_train_loss=np.mean(losses),
+                        mean_train_loss=round(np.mean(losses), 4),
                     )
                     losses.clear()
             torch.save({'net': model.state_dict()}, options.params)

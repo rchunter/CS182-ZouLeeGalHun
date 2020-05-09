@@ -77,7 +77,3 @@ class ConvNet(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc_layers(x)
         return x
-
-
-if __name__ == '__main__':
-    pass
