@@ -40,13 +40,9 @@ class ResidualNet(nn.Module):
         self.stage1 = nn.Sequential(
             ResidualBlock(64, 64),
             ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
             nn.Dropout(0.3),
         )
         self.stage2 = nn.Sequential(
-            ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
             ResidualBlock(64, 64),
             ResidualBlock(64, 64),
             nn.Dropout(0.3),

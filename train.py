@@ -33,7 +33,7 @@ def parse_options():
                         help='print every number of minibatches')
     parser.add_argument('--lr', type=float, default=2e-4, help='base learning rate')
     parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=1e-3, help='optimizer weight decay')
+    parser.add_argument('--weight-decay', type=float, default=5e-3, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
@@ -136,15 +136,15 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
         forward = functools.partial(forward_pass, model, criterion)
 
         for epoch in range(options.max_epochs):
-            train_total, correct_total, top_k_correct_total = 0, 0, 0
+            train_total, train_correct, train_top_k_correct = 0, 0, 0
             train_losses = []
             for batch_num, batch in enumerate(train_loader):
                 optimizer.zero_grad()
                 loss, batch_size, correct, top_k_correct = forward(batch)
                 train_losses.append(loss.item())
                 train_total += batch_size
-                correct_total += correct
-                top_k_correct_total += top_k_correct
+                train_correct += correct
+                train_top_k_correct += top_k_correct
                 loss.backward()
                 optimizer.step()
 
@@ -156,19 +156,19 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
                         test_batch = next(test_loader)
                     with torch.no_grad():
                         model.eval()
-                        test_loss, test_total, correct, top_k_correct = forward(test_batch)
+                        test_loss, batch_size, correct, top_k_correct = forward(test_batch)
                         model.train()
 
                     log.debug('Training update',
                               batch_num=batch_num+1, epoch=epoch,
-                              train_acc=round(correct_total/train_total, 4),
-                              train_top_k_acc=round(top_k_correct_total/train_total, 4),
+                              train_acc=round(train_correct/train_total, 4),
+                              train_top_k_acc=round(train_top_k_correct/train_total, 4),
                               train_loss=round(np.mean(train_losses), 4),
-                              test_acc=round(correct/test_total, 4),
-                              test_top_k_acc=round(top_k_correct/test_total, 4),
+                              test_acc=round(correct/batch_size, 4),
+                              test_top_k_acc=round(top_k_correct/batch_size, 4),
                               test_loss=round(test_loss.item(), 4))
                     train_losses.clear()
-                    train_total, correct_total, top_k_correct_total = 0, 0, 0
+                    train_total, train_correct, train_top_k_correct = 0, 0, 0
 
             torch.save({'net': model.state_dict()}, options.params)
             log.info('Epoch complete, saved model state')
