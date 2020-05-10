@@ -32,12 +32,12 @@ def parse_options():
     parser.add_argument('--params', type=str, default=None, help='path to model params')
     parser.add_argument('--dataset', type=str, default=str(cwd/'data/tiny-imagenet-200'),
                         help='path to dataset')
-    parser.add_argument('--print-every', type=int, default=200,
+    parser.add_argument('--print-every', type=int, default=100,
                         help='print every number of minibatches')
-    parser.add_argument('--lr', type=float, default=2e-4, help='base learning rate')
+    parser.add_argument('--lr', type=float, default=5e-6, help='base learning rate')
     parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=5e-3, help='optimizer weight decay')
-    parser.add_argument('--batch-size', type=int, default=32, help='batch size')
+    parser.add_argument('--weight-decay', type=float, default=1e-5, help='optimizer weight decay')
+    parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
 
@@ -118,6 +118,7 @@ class Trainer:
     losses: typing.List[float] = dataclasses.field(default_factory=list)
     rounding: int = 4
     print_every: int = 200
+    lr_scheduler: torch.nn.Module = None
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -160,7 +161,7 @@ class Trainer:
                     self.optimizer.step()
 
                 if (batch_num + 1)%self.print_every == 0:
-                    log.debug('Training update', batch_num=batch_num+1, **self.statistics)
+                    log.debug('Update', batch_num=batch_num+1, **self.statistics)
 
     def train(self, max_epochs: int, train_loader, val_loader):
         val_accuracies, best_weights = [], copy.deepcopy(self.model.state_dict())
@@ -174,10 +175,12 @@ class Trainer:
                 self.train_epoch(val_loader, train=False)
                 stats = self.statistics
                 if stats['accuracy'] > np.max(val_accuracies + [-np.inf]):
+                    log.info('New best weights', **stats)
                     best_weights = copy.deepcopy(self.model.state_dict())
                 val_accuracies.append(stats['accuracy'])
                 self.reset_statistics()
-                self.lr_scheduler.step()
+                if self.lr_scheduler:
+                    self.lr_scheduler.step()
         finally:
             return best_weights
 
@@ -194,12 +197,11 @@ def train(train_set, val_set, test_set, labels, options):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=options.lr,
                                  weight_decay=options.weight_decay)
-    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-        optimizer=optimizer,
-        gamma=options.lr_decay,
-    )
+    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
+                                                          gamma=options.lr_decay)
 
-    trainer = Trainer(model, optimizer, print_every=options.print_every)
+    trainer = Trainer(model, optimizer, print_every=options.print_every,
+                      lr_scheduler=lr_scheduler)
     best_weights = trainer.train(options.max_epochs, train_loader, val_loader)
     torch.save({'net': best_weights}, options.params)
     log.info('Saved weights')

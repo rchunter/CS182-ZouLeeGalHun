@@ -32,20 +32,16 @@ class ResidualBlock(nn.Module):
 
 class ResidualNet(nn.Module):
     def __init__(self, num_classes, height: int = 64, width: int = 64,
-                 in_channels: int = 3, affine_size: int = 2000):
+                 in_channels: int = 3, affine_size: int = 4000):
         super().__init__()
         self.conv_in = nn.Conv2d(in_channels, 64, kernel_size=7, padding=3,
                                  padding_mode='reflect')
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.stage1 = nn.Sequential(
             ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
-            nn.Dropout(0.3),
         )
         self.stage2 = nn.Sequential(
             ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
-            nn.Dropout(0.3),
         )
         self.affine = nn.Sequential(
             nn.Linear(64*(height//2)*(width//2), affine_size),
