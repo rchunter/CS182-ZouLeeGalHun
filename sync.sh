@@ -13,7 +13,7 @@ function cleanup {
 
 trap cleanup EXIT
 
-inotifywait --exclude '(data|logs|params|\.venv|\.git)' -mr --format '%w%f' -e close_write . | while read path; do
+inotifywait --exclude '(data|logs|params|\.venv|\.git|__pycache__)' -mr --format '%w%f' -e close_write . | while read path; do
   # Maybe `rsync` would be better
   scp -o "ControlPath=/tmp/${host}" -o "ControlMaster=no" ${path} ${host}:${target}
 done

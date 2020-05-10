@@ -33,7 +33,7 @@ def parse_options():
                         help='print every number of minibatches')
     parser.add_argument('--lr', type=float, default=1e-4, help='base learning rate')
     parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=1e-4, help='optimizer weight decay')
+    parser.add_argument('--weight-decay', type=float, default=1e-5, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
@@ -97,61 +97,80 @@ def load_datasets(options):
         transforms.ToTensor(),
         transforms.Normalize((0, 0, 0), tuple(np.sqrt((255, 255, 255)))),
     ])
-    train_set = torchvision.datasets.ImageFolder(cwd/options.dataset/'train', data_transforms)
-    val_set = torchvision.datasets.ImageFolder(cwd/options.dataset/'val', data_transforms)
-    test_set = torchvision.datasets.ImageFolder(cwd/options.dataset/'test', data_transforms)
+    train_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'train'), data_transforms)
+    val_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'), data_transforms)
+    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'test'), data_transforms)
     labels = np.array([item.name for item in (cwd/options.dataset/'train').glob('*')])
     return train_set, val_set, test_set, labels
 
 
-def forward_pass(model, loader, criterion):
-    inputs, targets = next(loader)
+def forward_pass(model, criterion, batch, k: int = 5):
+    inputs, targets = batch
     outputs = model(inputs)
     loss = criterion(outputs, targets)
-    print(outputs)
+    _, top_k_predictions = torch.topk(outputs, k=k, dim=1)
+    top_k_correct = top_k_predictions.eq(targets.unsqueeze(0).T).any(1)
+    correct = top_k_predictions[:, 0].eq(targets)
+    return loss, targets.size(0), correct.sum().item(), top_k_correct.sum().item()
 
 
 def train_with_tuning(train_set, val_set, test_set, labels, options):
     model_module = MODELS.get(options.model)
     model = model_module(len(labels))
-    log.debug('Initialized model')
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=options.lr,
-                                 weight_decay=options.weight_decay)
-    log.debug('Initialized loss and optimizer')
+    try:
+        log.debug('Initialized model')
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=options.lr,
+                                     weight_decay=options.weight_decay)
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            optimizer=optimizer,
+            gamma=options.lr_decay,
+        )
+        log.debug('Initialized loss and optimizer')
 
-    loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
-                               pin_memory=True, num_workers=2)
-    train_loader = loader(train_set, batch_size=options.batch_size)
-    test_loader = loader(test_set, batch_size=4*options.batch_size)
+        loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
+                                   pin_memory=True, num_workers=2)
+        train_loader = loader(train_set, batch_size=options.batch_size)
+        test_loader_factory = lambda: iter(loader(test_set, batch_size=options.batch_size))
+        test_loader = test_loader_factory()
+        forward = functools.partial(forward_pass, model, criterion)
 
-    for epoch in range(options.max_epochs):
-        for minibatch, (inputs, targets) in enumerate(train_loader):
-            outputs = model(inputs)
-            print(outputs)
-            return
+        for epoch in range(options.max_epochs):
+            train_total, correct_total, top_k_correct_total = 0, 0, 0
+            train_losses = []
+            for batch_num, batch in enumerate(train_loader):
+                optimizer.zero_grad()
+                loss, batch_size, correct, top_k_correct = forward(batch)
+                train_losses.append(loss.item())
+                train_total += batch_size
+                correct_total += correct
+                top_k_correct_total += top_k_correct
+                loss.backward()
+                optimizer.step()
 
-        # train_total, train_correct, losses = 0, 0, []
-        # for minibatch, (inputs, targets) in enumerate(train_loader):
-        #     optimizer.zero_grad()
-        #     outputs = model(inputs)
-        #     loss = criterion(outputs, targets)
-        #     loss.backward()
-        #     losses.append(loss.item())
-        #     optimizer.step()
-        #     _, predicted = outputs.max(1)
-        #     train_total += targets.size(0)
-        #     train_correct += predicted.eq(targets).sum().item()
-        #     if minibatch%options.print_every == 0:
-        #         log.debug(
-        #             'Training update',
-        #             accuracy=round(train_correct/train_total, 4),
-        #             minibatch=minibatch, epoch=epoch,
-        #             mean_train_loss=round(np.mean(losses), 4),
-        #         )
-        #         losses.clear()
-        # torch.save({'net': model.state_dict()}, options.params)
-        # log.info('Epoch complete, saved model state')
+                if (batch_num + 1)%options.print_every == 0:
+                    try:
+                        test_batch = next(test_loader)
+                    except StopIteration:
+                        test_loader = test_loader_factory()
+                        test_batch = next(test_loader)
+                    test_loss, test_total, correct, top_k_correct = forward(test_batch)
+
+                    log.debug('Training update', batch_num=batch_num+1, epoch=epoch,
+                              train_acc=round(correct_total/train_total, 4),
+                              train_top_k_acc=round(top_k_correct_total/train_total, 4),
+                              mean_train_loss=round(np.mean(train_losses), 4),
+                              test_acc=round(correct/test_total, 4),
+                              test_top_k_acc=round(top_k_correct/test_total, 4),
+                              test_loss=round(test_loss.item(), 4))
+                    train_losses.clear()
+
+            torch.save({'net': model.state_dict()}, options.params)
+            log.info('Epoch complete, saved model state')
+            lr_scheduler.step()
+    finally:
+        torch.save({'net': model.state_dict()}, 'params/param-dump.pt')
+        log.warn('Dumped parameters')
 
 
 def main():
@@ -162,6 +181,7 @@ def main():
         train_set, val_set, test_set, labels = load_datasets(options)
         log.debug('Loaded datasets', labels=len(labels), num_train=len(train_set),
                   num_val=len(val_set), num_test=len(test_set))
+        log.debug('CUDA status', is_available=torch.cuda.is_available())
         train_with_tuning(train_set, val_set, test_set, labels, options)
     except Exception as exc:
         log.critical('Received error', exc_info=exc)
