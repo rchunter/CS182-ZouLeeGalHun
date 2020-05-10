@@ -38,15 +38,18 @@ class ResidualNet(nn.Module):
                                  padding_mode='reflect')
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.stage1 = nn.Sequential(
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
             nn.Dropout(0.3),
-            ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
         )
         self.stage2 = nn.Sequential(
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
             nn.Dropout(0.3),
-            ResidualBlock(64, 64),
-            ResidualBlock(64, 64),
         )
         self.affine = nn.Sequential(
             nn.Linear(64*(height//2)*(width//2), affine_size),

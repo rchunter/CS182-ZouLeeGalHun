@@ -29,11 +29,11 @@ def parse_options():
     parser.add_argument('--params', type=str, default=None, help='path to model params')
     parser.add_argument('--dataset', type=str, default=str(cwd/'data/tiny-imagenet-200'),
                         help='path to dataset')
-    parser.add_argument('--print-every', type=int, default=100,
+    parser.add_argument('--print-every', type=int, default=200,
                         help='print every number of minibatches')
-    parser.add_argument('--lr', type=float, default=1e-4, help='base learning rate')
+    parser.add_argument('--lr', type=float, default=2e-4, help='base learning rate')
     parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=1e-4, help='optimizer weight decay')
+    parser.add_argument('--weight-decay', type=float, default=1e-3, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
@@ -131,7 +131,7 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
         loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
                                    pin_memory=True, num_workers=2)
         train_loader = loader(train_set, batch_size=options.batch_size)
-        test_loader_factory = lambda: iter(loader(test_set, batch_size=4*options.batch_size))
+        test_loader_factory = lambda: iter(loader(test_set, batch_size=5*options.batch_size))
         test_loader = test_loader_factory()
         forward = functools.partial(forward_pass, model, criterion)
 
@@ -154,16 +154,21 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
                     except StopIteration:
                         test_loader = test_loader_factory()
                         test_batch = next(test_loader)
-                    test_loss, test_total, correct, top_k_correct = forward(test_batch)
+                    with torch.no_grad():
+                        model.eval()
+                        test_loss, test_total, correct, top_k_correct = forward(test_batch)
+                        model.train()
 
-                    log.debug('Training update', batch_num=batch_num+1, epoch=epoch,
+                    log.debug('Training update',
+                              batch_num=batch_num+1, epoch=epoch,
                               train_acc=round(correct_total/train_total, 4),
                               train_top_k_acc=round(top_k_correct_total/train_total, 4),
-                              mean_train_loss=round(np.mean(train_losses), 4),
+                              train_loss=round(np.mean(train_losses), 4),
                               test_acc=round(correct/test_total, 4),
                               test_top_k_acc=round(top_k_correct/test_total, 4),
                               test_loss=round(test_loss.item(), 4))
                     train_losses.clear()
+                    train_total, correct_total, top_k_correct_total = 0, 0, 0
 
             torch.save({'net': model.state_dict()}, options.params)
             log.info('Epoch complete, saved model state')
