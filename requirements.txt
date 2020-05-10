@@ -2,7 +2,6 @@ torch>=1.5
 torchvision
 numpy>=1.16
 pillow
-skorch
 scikit-learn
 structlog
 colorama

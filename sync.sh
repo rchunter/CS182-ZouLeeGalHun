@@ -1,6 +1,6 @@
 #!/bin/bash
 
-host=cs-199
+host=cs-182-box
 target=cs-182-project
 
 ssh -MNf -S /tmp/${host} ${host}
