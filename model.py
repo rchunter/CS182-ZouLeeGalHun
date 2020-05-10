@@ -38,20 +38,18 @@ class ResidualNet(nn.Module):
                                  padding_mode='reflect')
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.stage1 = nn.Sequential(
+            nn.Dropout(0.3),
             ResidualBlock(64, 64),
             ResidualBlock(64, 64),
             ResidualBlock(64, 64),
-            Conv3x3(64, 128),
         )
         self.stage2 = nn.Sequential(
-            nn.Dropout(0.1),
-            ResidualBlock(128, 128),
-            ResidualBlock(128, 128),
-            Conv3x3(128, 256),
+            nn.Dropout(0.3),
+            ResidualBlock(64, 64),
+            ResidualBlock(64, 64),
         )
-        self.avg_pool = nn.AvgPool2d(2)
         self.affine = nn.Sequential(
-            nn.Linear(256*(height//4)*(width//4), affine_size),
+            nn.Linear(64*(height//2)*(width//2), affine_size),
             nn.Linear(affine_size, num_classes),
         )
 
@@ -60,7 +58,6 @@ class ResidualNet(nn.Module):
         x = self.max_pool(x)
         x = self.stage1(x)
         x = self.stage2(x)
-        x = self.avg_pool(x)
         x = x.view(x.size(0), -1)
         x = self.affine(x)
         return x

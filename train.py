@@ -33,7 +33,7 @@ def parse_options():
                         help='print every number of minibatches')
     parser.add_argument('--lr', type=float, default=1e-4, help='base learning rate')
     parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=1e-5, help='optimizer weight decay')
+    parser.add_argument('--weight-decay', type=float, default=1e-4, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
@@ -131,7 +131,7 @@ def train_with_tuning(train_set, val_set, test_set, labels, options):
         loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
                                    pin_memory=True, num_workers=2)
         train_loader = loader(train_set, batch_size=options.batch_size)
-        test_loader_factory = lambda: iter(loader(test_set, batch_size=options.batch_size))
+        test_loader_factory = lambda: iter(loader(test_set, batch_size=4*options.batch_size))
         test_loader = test_loader_factory()
         forward = functools.partial(forward_pass, model, criterion)
 
