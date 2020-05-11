@@ -153,17 +153,19 @@ class Trainer:
         else:
             self.model.eval()
 
-        with torch.set_grad_enabled(train):
-            for batch_num, (inputs, targets) in enumerate(dataloader):
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-                self.optimizer.zero_grad()
+        for batch_num, (inputs, targets) in enumerate(dataloader):
+            inputs = inputs.to(self.device)
+            targets = targets.to(self.device)
+            if not train:
+                print(targets)
+            self.optimizer.zero_grad()
+            with torch.set_grad_enabled(train):
                 loss = self.forward(inputs, targets)
                 if train:
                     loss.backward()
                     self.optimizer.step()
-                if (batch_num + 1)%self.print_every == 0:
-                    log.debug('Update', batch_num=batch_num+1, **self.statistics)
+            if (batch_num + 1)%self.print_every == 0:
+                log.debug('Update', batch_num=batch_num+1, **self.statistics)
 
     def train(self, max_epochs: int, train_loader, val_loader):
         val_accuracies, best_weights = [], copy.deepcopy(self.model.state_dict())
