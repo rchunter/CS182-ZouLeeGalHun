@@ -18,7 +18,7 @@ import torchvision
 from torchvision import transforms
 import yaml
 
-from model import MODELS
+import model
 
 
 log = structlog.get_logger()
@@ -110,42 +110,29 @@ def load_datasets(options):
     return train_set, val_set, test_set, labels
 
 
-@dataclasses.dataclass
 class Trainer:
-    model: torch.nn.Module
-    optimizer: torch.nn.Module
-    criterion: torch.nn.Module = dataclasses.field(default_factory=torch.nn.CrossEntropyLoss)
-    total: int = 0
-    correct: int = 0
-    top_correct: int = 0
-    losses: typing.List[float] = dataclasses.field(default_factory=list)
-    rounding: int = 4
-    print_every: int = 200
-    lr_scheduler: torch.nn.Module = None
-
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    rounding: int = 4
 
-    def forward(self, inputs, targets, k: int = 5):
+    def __init__(self, model, criterion, optimizer, lr_scheduler=None, print_every: int = 200):
+        self.model, self.criterion = model, criterion
+        self.optimizer, self.lr_scheduler = optimizer, lr_scheduler
+        self.total, self.losses = 0, []
+        self.print_every = print_every
+
+    def forward(self, inputs, targets):
         outputs = self.model(inputs)
         loss = self.criterion(outputs, targets)
         self.losses.append(loss.item())
-        _, top_predictions = torch.topk(outputs, k, dim=1)
-        self.top_correct += top_predictions.eq(targets.unsqueeze(0).T).any(1).sum().item()
-        self.correct += top_predictions[:, 0].eq(targets).sum().item()
-        self.total += targets.size(0)
-        return loss
-
-    def reset_statistics(self):
-        self.total, self.correct, self.top_correct = 0, 0, 0
-        self.losses.clear()
+        return outputs, loss
 
     @property
     def statistics(self):
-        return {
-            'accuracy': round(self.correct/self.total, self.rounding),
-            'top_accuracy': round(self.top_correct/self.total, self.rounding),
-            'loss': round(np.mean(self.losses), self.rounding),
-        }
+        return {'loss': round(np.mean(self.losses), self.rounding)}
+
+    def reset_statistics(self):
+        self.total = 0
+        self.losses.clear()
 
     def train_epoch(self, dataloader, train: bool = True):
         if train:
@@ -153,40 +140,71 @@ class Trainer:
         else:
             self.model.eval()
 
-        for batch_num, (inputs, targets) in enumerate(dataloader):
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
-            self.optimizer.zero_grad()
-            with torch.set_grad_enabled(train):
-                loss = self.forward(inputs, targets)
+        with torch.set_grad_enabled(train):
+            for batch_num, (inputs, targets) in enumerate(dataloader):
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                self.optimizer.zero_grad()
+                outputs, loss = self.forward(inputs, targets)
                 if train:
                     loss.backward()
                     self.optimizer.step()
-            if (batch_num + 1)%self.print_every == 0:
-                log.debug('Update', batch_num=batch_num+1, **self.statistics)
-                if train:
-                    self.reset_statistics()
+                if (batch_num + 1)%self.print_every == 0:
+                    log.debug('Update', batch_num=batch_num+1, **self.statistics)
+                    if train:
+                        self.reset_statistics()
 
-    def train(self, max_epochs: int, train_loader, val_loader):
-        val_accuracies, best_weights = [], copy.deepcopy(self.model.state_dict())
+    def train(self, max_epochs: int, train_loader, val_loader, metric: str = 'loss'):
+        metric_history, best_weights = [], copy.deepcopy(self.model.state_dict())
         try:
             for epoch in range(max_epochs):
                 log.info('Training phase', epoch=epoch)
                 self.train_epoch(train_loader)
-                self.reset_statistics()
 
                 log.info('Validation phase', epoch=epoch)
                 self.train_epoch(val_loader, train=False)
+
                 stats = self.statistics
-                if stats['accuracy'] > np.max(val_accuracies + [-np.inf]):
-                    log.info('New best weights', **stats)
-                    best_weights = copy.deepcopy(self.model.state_dict())
-                val_accuracies.append(stats['accuracy'])
                 self.reset_statistics()
+                if stats[metric] > np.max(metric_history + [-np.inf]):
+                    best_weights = copy.deepcopy(self.model.state_dict())
+                    log.info('Updated best weights', **stats, metric=metric)
+                metric_history.append(stats[metric])
+
                 if self.lr_scheduler:
                     self.lr_scheduler.step()
+        except Exception as exc:
+            log.error('Encountered error during training', exc_info=exc)
         finally:
             return best_weights
+
+
+class ClassificationTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.correct, self.top_correct = 0, 0
+
+    def forward(self, inputs, targets, k: int = 5):
+        outputs, loss = super().forward(inputs, targets)
+        _, top_predictions = torch.topk(outputs, k, dim=1)
+        self.top_correct += top_predictions.eq(targets.unsqueeze(0).T).any(1).sum().item()
+        self.correct += top_predictions[:, 0].eq(targets).sum().item()
+        self.total += targets.size(0)
+        return outputs, loss
+
+    @property
+    def statistics(self):
+        return {
+            **super().statistics,
+            'accuracy': round(self.correct/self.total, self.rounding),
+            'top_accuracy': round(self.top_correct/self.total, self.rounding),
+        }
+
+    def reset_statistics(self):
+        super().reset_statistics()
+        self.correct, self.top_correct = 0, 0
+
+    def train(self, *args, **kwargs):
+        return super().train(*args, **kwargs, metric='accuracy')
 
 
 def train(train_set, val_set, test_set, labels, options):
@@ -204,17 +222,17 @@ def train(train_set, val_set, test_set, labels, options):
         torch.nn.Linear(4000, len(labels)),
     )
 
-    # model_module = MODELS.get(options.model)
-    # model = model_module(len(labels))
     model.to(Trainer.device)
 
+    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.fc.parameters(), lr=options.lr,
                                  weight_decay=options.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
                                                           gamma=options.lr_decay)
 
-    trainer = Trainer(model, optimizer, print_every=options.print_every,
-                      lr_scheduler=lr_scheduler)
+    trainer = ClassificationTrainer(model, criterion, optimizer,
+                                    print_every=options.print_every,
+                                    lr_scheduler=lr_scheduler)
     best_weights = trainer.train(options.max_epochs, train_loader, val_loader)
     torch.save({'net': best_weights}, options.params)
     log.info('Saved weights')
