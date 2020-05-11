@@ -32,11 +32,11 @@ def parse_options():
     parser.add_argument('--params', type=str, default=None, help='path to model params')
     parser.add_argument('--dataset', type=str, default=str(cwd/'data/tiny-imagenet-200'),
                         help='path to dataset')
-    parser.add_argument('--print-every', type=int, default=100,
+    parser.add_argument('--print-every', type=int, default=500,
                         help='print every number of minibatches')
-    parser.add_argument('--lr', type=float, default=5e-4, help='base learning rate')
-    parser.add_argument('--lr-decay', type=float, default=0.95, help='learning rate decay every epoch')
-    parser.add_argument('--weight-decay', type=float, default=1e-3, help='optimizer weight decay')
+    parser.add_argument('--lr', type=float, default=1e-5, help='base learning rate')
+    parser.add_argument('--lr-decay', type=float, default=0.9, help='learning rate decay every epoch')
+    parser.add_argument('--weight-decay', type=float, default=1e-5, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
     options = parser.parse_args()
@@ -97,8 +97,8 @@ def initialize_logging(options):
 
 def load_datasets(options):
     data_transforms = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         # transforms.Normalize((0, 0, 0), tuple(np.sqrt((255, 255, 255)))),
@@ -156,8 +156,6 @@ class Trainer:
         for batch_num, (inputs, targets) in enumerate(dataloader):
             inputs = inputs.to(self.device)
             targets = targets.to(self.device)
-            if not train:
-                print(targets)
             self.optimizer.zero_grad()
             with torch.set_grad_enabled(train):
                 loss = self.forward(inputs, targets)
@@ -166,6 +164,8 @@ class Trainer:
                     self.optimizer.step()
             if (batch_num + 1)%self.print_every == 0:
                 log.debug('Update', batch_num=batch_num+1, **self.statistics)
+                if train:
+                    self.reset_statistics()
 
     def train(self, max_epochs: int, train_loader, val_loader):
         val_accuracies, best_weights = [], copy.deepcopy(self.model.state_dict())
@@ -195,12 +195,12 @@ def train(train_set, val_set, test_set, labels, options):
                                batch_size=options.batch_size)
     train_loader, val_loader = loader(train_set), loader(val_set)
 
-    model = torchvision.models.resnet34(pretrained=True)
+    model = torchvision.models.resnet50(pretrained=True)
     for param in model.parameters():
         param.requires_grad = False
     model.fc = torch.nn.Sequential(
-        torch.nn.Linear(model.fc.in_features, 4000),
         torch.nn.Dropout(0.4),
+        torch.nn.Linear(model.fc.in_features, 4000),
         torch.nn.Linear(4000, len(labels)),
     )
 
