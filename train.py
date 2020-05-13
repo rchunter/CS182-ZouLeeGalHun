@@ -10,6 +10,7 @@ import logging.config
 import pathlib
 import random
 import typing
+import io
 
 from PIL import Image
 import numpy as np
@@ -25,6 +26,13 @@ import model as visionmodel
 log = structlog.get_logger()
 cwd = pathlib.Path('.')
 
+def JPEGCompression(image):
+    output = io.BytesIO()
+    image.save(output, "JPEG", quality=75, optimize=True)
+    output.seek(0)
+    return Image.open(output)
+
+
 
 spatial_transforms = transforms.Compose([
     transforms.RandomChoice([
@@ -39,6 +47,7 @@ spatial_transforms = transforms.Compose([
     transforms.RandomVerticalFlip(),
     transforms.RandomHorizontalFlip(),
 ])
+jpeg_transform = transforms.Lambda(JPEGCompression)
 color_transform = transforms.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.2, hue=0.05)
 noise_transform = transforms.Lambda(lambda image, std=0.2: torch.clamp(image + std*torch.randn_like(image), 0, 1))
 normalize_stds = [0.229, 0.224, 0.225]
