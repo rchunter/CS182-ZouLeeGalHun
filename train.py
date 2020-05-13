@@ -11,6 +11,7 @@ import pathlib
 import random
 import typing
 
+from PIL import Image
 import numpy as np
 import structlog
 import torch
@@ -18,11 +19,29 @@ import torchvision
 from torchvision import transforms
 import yaml
 
-import model
+import model as visionmodel
 
 
 log = structlog.get_logger()
 cwd = pathlib.Path('.')
+
+
+spatial_transforms = transforms.Compose([
+    transforms.RandomChoice([
+        transforms.Compose([
+            # Ensure that the rotated image has its corners filled.
+            transforms.Pad(60, padding_mode='reflect'),
+            transforms.RandomAffine(90, translate=(0.1, 0.1)),
+            transforms.CenterCrop(224),
+        ]),
+        transforms.RandomResizedCrop(224, scale=(0.5, 1)),
+    ]),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomHorizontalFlip(),
+])
+color_transform = transforms.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.2, hue=0.05)
+noise_transform = transforms.Lambda(lambda image, std=0.1: torch.clamp(image + std*torch.randn_like(image), 0, 1))
+normalize_transform = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
 
 def parse_options():
@@ -96,16 +115,34 @@ def initialize_logging(options):
 
 
 def load_datasets(options):
-    data_transforms = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        # transforms.Normalize((0, 0, 0), tuple(np.sqrt((255, 255, 255)))),
-    ])
-    train_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'train'), data_transforms)
-    val_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'), data_transforms)
-    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'test'), data_transforms)
+    train_transforms = [
+        transforms.Resize(256, interpolation=Image.LANCZOS),
+        transforms.RandomChoice([transforms.CenterCrop(224), spatial_transforms]),
+    ]
+    if options.model == 'denoise':
+        train_transforms.append(transforms.ToTensor())
+        test_transforms = train_transforms
+    else:
+        train_transforms.extend([
+            color_transform,
+            transforms.ToTensor(),
+            noise_transform,
+            # transforms.RandomErasing(scale=(0.02, 0.1), ratio=(0.5, 2)),
+            normalize_transform,
+        ])
+        test_transforms = [
+            transforms.Resize(256, interpolation=Image.LANCZOS),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize_transform,
+        ]
+
+    train_transforms = transforms.Compose(train_transforms)
+    test_transforms = transforms.Compose(test_transforms)
+
+    train_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'train'), train_transforms)
+    val_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'), test_transforms)
+    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'test'), test_transforms)
     labels = np.array([item.name for item in (cwd/options.dataset/'train').glob('*')])
     return train_set, val_set, test_set, labels
 
@@ -134,15 +171,20 @@ class Trainer:
         self.total = 0
         self.losses.clear()
 
-    def train_epoch(self, dataloader, train: bool = True):
+    def set_model_mode(self, train: bool = True):
         if train:
             self.model.train()
         else:
             self.model.eval()
 
+    def transform_batch(self, inputs, targets):
+        return inputs.to(self.device), targets.to(self.device)
+
+    def train_epoch(self, dataloader, train: bool = True):
+        self.set_model_mode(train=train)
         with torch.set_grad_enabled(train):
             for batch_num, (inputs, targets) in enumerate(dataloader):
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                inputs, targets = self.transform_batch(inputs, targets)
                 self.optimizer.zero_grad()
                 outputs, loss = self.forward(inputs, targets)
                 if train:
@@ -207,32 +249,60 @@ class ClassificationTrainer(Trainer):
         return super().train(*args, **kwargs, metric='accuracy')
 
 
-def train(train_set, val_set, test_set, labels, options):
+class DenoiseNetTrainer(Trainer):
+    input_transforms = transforms.Compose([
+        transforms.ToPILImage(),
+        color_transform,
+        transforms.ToTensor(),
+        noise_transform,
+        normalize_transform,
+    ])
+
+    @property
+    def statistics(self):
+        stats = super().statistics
+        return {**stats, 'psnr': 20*np.log10(max_value/stats['loss'])}
+
+    def transform_batch(self, inputs, _targets):
+        inputs = inputs.clone().detach().requires_grad_(True)
+        targets = inputs.to(self.device)
+        print(inputs)
+        inputs = inputs.to(self.device)
+        return inputs, targets
+
+
+def train(train_set, val_set, test_set, labels, options, trainer_cls=ClassificationTrainer):
     loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
                                pin_memory=True, num_workers=4,
                                batch_size=options.batch_size)
     train_loader, val_loader = loader(train_set), loader(val_set)
 
-    model = torchvision.models.resnet50(pretrained=True)
-    for param in model.parameters():
-        param.requires_grad = False
-    model.fc = torch.nn.Sequential(
-        torch.nn.Dropout(0.4),
-        torch.nn.Linear(model.fc.in_features, 4000),
-        torch.nn.Linear(4000, len(labels)),
-    )
+    if options.model == 'denoise':
+        model, trainer_cls = visionmodel.DenoiseNet(), DenoiseNetTrainer
+        params = model.parameters()
+        criterion = torch.nn.MSELoss()
+    else:
+        model = torchvision.models.resnet50(pretrained=True)
+        trainer_cls = ClassificationTrainer
+        for param in model.parameters():
+            param.requires_grad = False
+        model.fc = torch.nn.Sequential(
+            torch.nn.Dropout(0.4),
+            torch.nn.Linear(model.fc.in_features, 4000),
+            torch.nn.Linear(4000, len(labels)),
+        )
+        params = model.fc.parameters()
+        criterion = torch.nn.CrossEntropyLoss()
 
     model.to(Trainer.device)
-
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.fc.parameters(), lr=options.lr,
+    optimizer = torch.optim.Adam(params, lr=options.lr,
                                  weight_decay=options.weight_decay)
+
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
                                                           gamma=options.lr_decay)
 
-    trainer = ClassificationTrainer(model, criterion, optimizer,
-                                    print_every=options.print_every,
-                                    lr_scheduler=lr_scheduler)
+    trainer = trainer_cls(model, criterion, optimizer, print_every=options.print_every,
+                          lr_scheduler=lr_scheduler)
     best_weights = trainer.train(options.max_epochs, train_loader, val_loader)
     torch.save({'net': best_weights}, options.params)
     log.info('Saved weights')

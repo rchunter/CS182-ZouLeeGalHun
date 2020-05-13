@@ -15,16 +15,15 @@ Conv7x7 = functools.partial(nn.Conv2d, kernel_size=7, padding=3, padding_mode='r
 
 
 class DenoiseBlock(nn.Module):
-    def __init__(self, conv_block: nn.Conv2d, in_channels: int, out_channels: int,
-                 dropout: float = 0.1):
+    def __init__(self, conv_block: nn.Conv2d, channels: int, dropout: float = 0.1):
         super().__init__()
         self.layers = nn.Sequential(
-            conv_block(in_channels, out_channels),
-            nn.BatchNorm2d(out_channels),
+            conv_block(channels, channels),
+            nn.BatchNorm2d(channels),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            conv_block(out_channels, out_channels),
-            nn.BatchNorm2d(out_channels),
+            conv_block(channels, channels),
+            nn.BatchNorm2d(channels),
             nn.ReLU(inplace=True),
         )
 
@@ -33,13 +32,13 @@ class DenoiseBlock(nn.Module):
 
 
 class DenoiseNet(nn.Module):
-    def __init__(self, height: int = 64, width: int = 64, channels: int = 3,
-                 filters: int = 64):
+    def __init__(self, channels: int = 3, filters: int = 64):
+        super().__init__()
         self.layers = nn.Sequential(
-            DenoiseBlock(Conv7x7, channels, filters),
-            DenoiseBlock(Conv5x5, filters, filters),
-            DenoiseBlock(Conv5x5, filters, filters),
-            DenoiseBlock(Conv3x3, filters, channels),
+            Conv7x7(channels, filters),
+            DenoiseBlock(Conv5x5, filters),
+            DenoiseBlock(Conv5x5, filters),
+            Conv3x3(filters, channels),
         )
 
     def forward(self, x):
