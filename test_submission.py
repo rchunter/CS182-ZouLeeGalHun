@@ -23,6 +23,12 @@ def main(classes_path='data/tiny-imagenet-200/wnids.txt', output_filename='eval_
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
 
+    checkpoint = torch.load('params/denoise-final.pt', map_location=torch.device('cpu'))
+    denoise_model = DenoiseNet()
+    denoise_model.load_state_dict(checkpoint['net'])
+    denoise_model.eval()
+    print('Loaded denoising network')
+
     try:
         with open(classes_path) as classes_file:
             classes = classes_file.read().strip().split('\n')

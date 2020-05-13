@@ -40,7 +40,7 @@ spatial_transforms = transforms.Compose([
     transforms.RandomHorizontalFlip(),
 ])
 color_transform = transforms.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.2, hue=0.05)
-noise_transform = transforms.Lambda(lambda image, std=0.2: torch.clamp(image + std*torch.randn_like(image), 0, 1))
+noise_transform = transforms.Lambda(lambda image, std=0.1: torch.clamp(image + std*torch.randn_like(image), 0, 1))
 normalize_stds = [0.229, 0.224, 0.225]
 normalize_transform = transforms.Normalize([0.485, 0.456, 0.406], normalize_stds)
 
