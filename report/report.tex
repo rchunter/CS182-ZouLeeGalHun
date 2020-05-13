@@ -3,12 +3,16 @@
 \usepackage{amsmath, amsfonts, amssymb, amsthm}
 \usepackage[margin=1.1in]{geometry}
 
+\usepackage{float}
 \usepackage{microtype}
 \usepackage{mathpazo}
+\usepackage{tikz}
+
+\tikzstyle{circleblock} = [draw, fill=white, circle, inner sep=0]
 
 \begin{document}
   \title{Signal Processing Methods for Noise-Resistant CNNs}
-  \author{Jonathan Lee}
+  \author{Rowen Hunter, Eero Gallano, Jonathan Lee}
   \date{\today}
   \maketitle
 
@@ -17,6 +21,47 @@
 
   \section{Approach}
   % Assumptions, definitions, objective
+
+  \begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+      \node (input) at (0, 0) {$224 \times 224$ RGB Image};
+      \node[draw, fill=blue!20, inner sep=5pt] (conv7x7) at (0, -1) {$7 \times 7, 3 \to 64$ Conv.};
+      \node[draw, fill=green!20, inner sep=5pt] (resid1) at (0, -2) {Residual Block};
+      \node[draw, fill=green!20, inner sep=5pt] (resid2) at (0, -3) {Residual Block};
+      \node[draw, fill=blue!20, inner sep=5pt] (conv3x3) at (0, -4) {$3 \times 3, 64 \to 3$ Conv.};
+      \node (output) at (0, -5) {$224 \times 224$ Denoised RGB Image};
+      \fill[green!20] (3, -0.5) rectangle (8, -4.9);
+
+      \node (blockin) at (6, 0) {};
+      \node[draw, fill=blue!20, inner sep=5pt] (conv5x5) at (6, -1.5) {$5 \times 5, 64 \to 64$ Conv.};
+      \node[draw, fill=orange!20, inner sep=5pt] (batchnorm) at (6, -2.5) {Batch Norm.};
+      \node[draw, fill=red!20, inner sep=5pt] (relu) at (6, -3.5) {ReLU};
+      \node (blockout) at (6, -5) {};
+      \node at (8.5, -2.5) {\Large $\times 2$};
+      \node[circleblock] (sum) at (6, -4.5) {$+$};
+
+      \draw[->, thick] (input) -- (conv7x7);
+      \draw[->, thick] (conv7x7) -- (resid1);
+      \draw[->, thick] (resid1) -- (resid2);
+      \draw[->, thick] (resid2) -- (conv3x3);
+      \draw[->, thick] (conv3x3) -- (output);
+
+      \draw[->, thick] (blockin) -- (conv5x5);
+      \draw[->, thick] (conv5x5) -- (batchnorm);
+      \draw[->, thick] (batchnorm) -- (relu);
+      \draw[->, thick] (relu) -- (sum);
+      \draw[->, thick] (sum) -- (6, -5.2);
+      \draw[dashed] (3, -0.5) -- (8, -0.5) -- (8, -4.9) -- (3, -4.9) -- (3, -0.5);
+      \draw[dashed] (resid1.east) ++ (0, 0.3) -- ++(0.5, 0) -- (3, -0.5);
+      \draw[dashed] (resid1.east) ++ (0, -0.3) -- ++(0.5, 0) -- (3, -4.9);
+      \draw[->, thick] (6, -0.9) -- (3.5, -0.9) -- (3.5, -4.5) -- (sum);
+    \end{tikzpicture}
+    \caption{
+      Denoising network architecture.
+      All convolutional blocks use stride 1 and padding such that the spatial dimensions are preserved.
+    }
+  \end{figure}
 
   \begin{enumerate}
   \item Augment the dataset with rotated, shifted, scaled (input perturbations)
@@ -31,7 +76,7 @@
 
   \section{Results}
 
-  \section{}
+  \section{Tools}
 
   \section{Lessons Learned}
 
