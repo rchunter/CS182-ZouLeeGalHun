@@ -41,7 +41,8 @@ spatial_transforms = transforms.Compose([
 ])
 color_transform = transforms.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.2, hue=0.05)
 noise_transform = transforms.Lambda(lambda image, std=0.1: torch.clamp(image + std*torch.randn_like(image), 0, 1))
-normalize_transform = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+normalize_stds = [0.229, 0.224, 0.225]
+normalize_transform = transforms.Normalize([0.485, 0.456, 0.406], normalize_stds)
 
 
 def parse_options():
@@ -127,7 +128,7 @@ def load_datasets(options):
             color_transform,
             transforms.ToTensor(),
             noise_transform,
-            # transforms.RandomErasing(scale=(0.02, 0.1), ratio=(0.5, 2)),
+            transforms.RandomErasing(scale=(0.02, 0.2), ratio=(0.5, 2)),
             normalize_transform,
         ])
         test_transforms = [
@@ -257,18 +258,20 @@ class DenoiseNetTrainer(Trainer):
         noise_transform,
         normalize_transform,
     ])
+    max_error = np.sum(normalize_stds)  # Per pixel
 
     @property
-    def statistics(self):
+    def statistics(self, height=224, width=224):
         stats = super().statistics
-        return {**stats, 'psnr': 20*np.log10(max_value/stats['loss'])}
+        return {**stats, 'psnr': round(20*np.log10(height*width*self.max_error/stats['loss']), self.rounding)}
 
     def transform_batch(self, inputs, _targets):
-        inputs = inputs.clone().detach().requires_grad_(True)
         targets = inputs.to(self.device)
-        print(inputs)
-        inputs = inputs.to(self.device)
-        return inputs, targets
+        transformed_inputs = torch.empty_like(inputs)
+        for i in range(inputs.size(0)):
+            transformed_inputs[i] = self.input_transforms(inputs[i])
+        transformed_inputs = transformed_inputs.to(self.device)
+        return transformed_inputs, targets
 
 
 def train(train_set, val_set, test_set, labels, options, trainer_cls=ClassificationTrainer):

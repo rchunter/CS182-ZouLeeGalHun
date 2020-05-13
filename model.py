@@ -36,8 +36,8 @@ class DenoiseNet(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             Conv7x7(channels, filters),
-            DenoiseBlock(Conv5x5, filters),
-            DenoiseBlock(Conv5x5, filters),
+            DenoiseBlock(Conv5x5, filters, dropout=0.4),
+            DenoiseBlock(Conv5x5, filters, dropout=0.4),
             Conv3x3(filters, channels),
         )
 
