@@ -57,6 +57,10 @@ def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, optio
     # Generate adverserial samples from test set
     # Adverserial samples are FSGM on exposed model
     for data, target in test_loader:
+        print(f'\rFound {len(adv_examples)} adverserial examples', end='')
+        if len(adv_examples) >= 200:
+            break
+
         data, target = data.to(device), target.to(device)
 
         data.requires_grad = True
@@ -85,7 +89,7 @@ def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, optio
             if len(adv_examples) < 200:
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
                 adv_examples.append( (init_pred.item(), final_pred.item(), target.item(), adv_ex) )
-
+    print()
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(len(test_loader))
     print("Epsilon: {}\tPure Test Accuracy = {} / {} = {}".format(epsilon, correct, len(test_loader), final_acc))
@@ -116,8 +120,9 @@ def test(options, epsilons=[0, .05, .1, .15, .2, .25, .3]):
     # Create data loaders
     loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
                             pin_memory=True, num_workers=4,
-                            batch_size=options.batch_size)
-    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'))
+                            batch_size=1)
+    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'),
+                                                transform=transforms.ToTensor())
     test_loader = loader(test_set)
 
     # Create transforms
@@ -159,12 +164,10 @@ def parse_options():
     parser.add_argument('--params', type=str, default=None, help='path to model params')
     parser.add_argument('--dataset', type=str, default=str(cwd/'data/tiny-imagenet-200'),
                         help='path to dataset')
-    parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     options = parser.parse_args()
 
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
     options.test = f'{options.model}-{now}'
-    options.params = options.params or str(cwd/f'params/{options.train}.pt')
     return options
 
 def main():
@@ -172,3 +175,5 @@ def main():
     options = parse_options()
     test(options)
 
+if __name__ == '__main__':
+    main()
