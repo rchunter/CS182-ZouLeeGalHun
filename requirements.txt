@@ -1,9 +1,7 @@
-torch>=1.5
-torchvision
-numpy>=1.16
-pillow
-scikit-learn
-structlog
-colorama
-pandas
-pyyaml
+colorama==0.4.3
+numpy==1.18.4
+Pillow==7.1.2
+scipy==1.4.1
+structlog==20.1.0
+torch==1.5.0
+torchvision==0.6.0

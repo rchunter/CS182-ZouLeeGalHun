@@ -1,11 +1,20 @@
-This is some sample code for the CS 182/282 Computer Vision project (Tensorflow 2). It has the following files:
+CS 182 Final Project: Vision Project (Generalizable Classifiers)
+Rowen Hunter, Eero Gallano, Jonathan Lee
+----------------------------------------
 
-README.txt - This file
-requirements.txt - The python requirments necessary to run this project
-train_sample.py - A sample training file which trains a simple model on the data, and save the checkpoint to be loaded
-                  in the test_submission.py file.
-test_submission.py - A sample file which will return an output for every input in the eval.csv
-eval.csv - An example test file
-data/get_data.sh - A script which will download the tiny-imagenet data into the data/tiny-imagenet-200 file
+Project repo: https://github.com/rchunter/CS182-ZouLeeGalHun
 
-Note: You should be using Python 3 to run this code.
+Project contents:
+  * `README.txt` - This file
+  * `requirements.txt` - Python package dependencies
+  * `model.py` - PyTorch model definitions
+  * `test_submission.py` - Submission script to classify all the images listed in `eval.csv`
+  * `data/tiny-imagenet-200/wnids.txt` - List of class names that `test_submission.py` will read. You can also get this file from the `tiny-imagenet-200` dataset (http://cs231n.stanford.edu/tiny-imagenet-200.zip).
+  * `report/report.pdf` - Our project report
+  * `params/*-final.pt` - Final model parameters
+
+Notes
+-----
+  * You should run `test_submission.py` with Python 3 (preferably Python 3.8).
+  * Unfortunately, `test_submission.py` can be quite slow because the files have to be read one at a time and classified one-by-one, instead of in minibatches. Using a GPU may help speed up the forward pass.
+  * We assume the images are RGB, since the number of channels our model expects (3) is fixed.
