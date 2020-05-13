@@ -424,4 +424,5 @@ TSWLatexianTemp*
 # Training data
 /data
 /params
+/eval_classified.csv
 submission.zip
