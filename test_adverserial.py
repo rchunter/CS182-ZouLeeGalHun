@@ -50,16 +50,14 @@ def fgsm_attack(image, epsilon, data_grad):
     return perturbed_image
 
 
-def fsgm_test(model, device, test_loader, epsilon, options):
+def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, options):
     correct = 0
     adv_examples = []
+
+    # Generate adverserial samples from test set
+    # Adverserial samples are FSGM on exposed model
     for data, target in test_loader:
         data, target = data.to(device), target.to(device)
-
-        # if options.crop_ensemble:
-        #     bs, ncrops, c, h, w = data.size()
-        #     result = model(data.view(-1, c, h, w)) # fuse batch size and ncrops
-        #     output = result.view(bs, ncrops, -1).mean(1) # avg over crops
 
         data.requires_grad = True
         output = model(data)
@@ -81,39 +79,76 @@ def fsgm_test(model, device, test_loader, epsilon, options):
             # Special case for saving 0 epsilon examples
             if (epsilon == 0) and (len(adv_examples) < 5):
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+                adv_examples.append( (init_pred.item(), final_pred.item(), target.item(), adv_ex) )
         else:
             # Save some adv examples for visualization later
-            if len(adv_examples) < 5:
+            if len(adv_examples) < 200:
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+                adv_examples.append( (init_pred.item(), final_pred.item(), target.item(), adv_ex) )
 
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(len(test_loader))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, len(test_loader), final_acc))
+    print("Epsilon: {}\tPure Test Accuracy = {} / {} = {}".format(epsilon, correct, len(test_loader), final_acc))
 
-    # Return the accuracy and an adversarial example
-    return final_acc, adv_examples
+    # Test on robust network
+    if options.denoise:
+        checkpoint = torch.load('params/denoise-final.pt', map_location=device)
+        denoise_model = DenoiseNet()
+        denoise_model.load_state_dict(checkpoint['net'])
+        denoise_model.eval()
 
-def load_datasets(options):
-    data_transforms = [
+    correct = 0
+    for _, _, adv_ex, target in adv_examples:
+        # First preprocess image for denoising
+        adv_ex = preprocess(adv_ex)[None, :]
+        if options.denoise:
+            adv_ex = denoise_model(adv_ex)[0]
+        adv_ex = midprocess(adv_ex)[None, :]
+        output = model(adv_ex)
+        final_pred = output.max(1, keepdim=True)[1]
+        if final_pred.item() == target:
+            correct += 1
+
+    final_acc = correct/200.
+    print("Epsilon: {}\tRobust Test Accuracy = {} / {} = {}".format(epsilon, correct, 200, final_acc))
+
+def test(options, epsilons=[0, .05, .1, .15, .2, .25, .3]):
+    # Create data loaders
+    loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
+                            pin_memory=True, num_workers=4,
+                            batch_size=options.batch_size)
+    test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'))
+    test_loader = loader(test_set)
+
+    # Create transforms
+    preprocessing_transforms = transforms.Compose([
         transforms.Resize(256, interpolation=Image.LANCZOS),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]
+    ])
+
+    intermediate_transforms = []
     if options.jpeg:
-        data_transforms += [transforms.Lambda(JPEGCompression)]
+        intermediate_transforms += [transforms.Lambda(JPEGCompression)]
+    intermediate_transforms += [
+        transforms.Lambda(lambda image: torch.clamp(image, 0, 1)),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ]
     if options.crop_ensemble:
-        data_transforms += [transforms.Compose([
+        intermediate_transforms += [transforms.Compose([
             transforms.FiveCrop(),
             transforms.Lambda(lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops]))
         ])]
+    intermediate_transforms = transforms.Compose(intermediate_transforms)
 
 
-def test(test_set, labels, options):
-    pass
+    device = torch.device('cuda:0' if False and torch.cuda.is_available() else 'cpu')
     
+    # Model
+    model = torchvision.models.resnet50(pretrained=True)
+
+    for eps in epsilons:
+        fsgm_test(model, device, test_loader, eps, preprocessing_transforms, intermediate_transforms, options)
 
 def parse_options():
     parser = argparse.ArgumentParser(description='Testing script for image classifier on adversial inputs')
@@ -133,5 +168,7 @@ def parse_options():
     return options
 
 def main():
-    epsilons = [0, .05, .1, .15, .2, .25, .3]
+
     options = parse_options()
+    test(options)
+
