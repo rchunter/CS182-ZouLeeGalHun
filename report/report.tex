@@ -1,7 +1,9 @@
 \documentclass[justified]{article}
 
 \usepackage{amsmath, amsfonts, amssymb, amsthm}
+\usepackage{enumerate}
 \usepackage[margin=1.1in]{geometry}
+\usepackage{graphicx}
 \usepackage{hyperref}
 
 \usepackage{float}
@@ -21,7 +23,7 @@
 \tikzstyle{circleblock} = [draw, fill=white, circle, inner sep=0]
 
 \begin{document}
-  \title{Data Preprocessing Methods for Noise-Resistant CNNs}
+  \title{Data Preprocessing for Noise-Resistant CNNs}
   \author{Rowen Hunter, Eero Gallano, Jonathan Lee}
   \date{\today}
   \maketitle
@@ -34,14 +36,58 @@
 
   \subsection{Data Augmentation}
 
-  In order for our classifier to generalize, it needs to be trained on a varied and
+  In natural images, rotations, translations, and variations in color occur regularly due to camera positioning and lighting conditions.
+  To encourage our classifier to be invariant to these perturbations, we augmented the training dataset by randomly perturbing each sample image with probability 0.5. If perturbed, the image was subjected to the following transformations:
+  \begin{enumerate}
+  \item
+    \textbf{Spatial perturbations} consisted of horizontal and vertical reflections, each occurring independently with probability $0.5$, and either a rotation or a crop, which were equally likely:
+    \begin{enumerate}[(i)]
+    \item
+      A rotation involved padding the image by 60 pixels on all sides using reflection, rotating by a random number of degrees (uniformly chosen in the range $-180^\circ, +180^\circ$), and cropping to the centermost $224 \times 244$ pixels.
+      The padding ensures the corners of the rotated image are always filled with pixels that resemble the boundary of the original image, as opposed to having those unused pixels zeroed out.
+
+    \item
+      A crop selects a region, between half and unit scale, with an aspect ratio between $\frac{3}{4}$ and $\frac{4}{3}$ of that of the original image.
+      This region is then resize to fit the original image, which can introduce distortion along each spatial axis.
+    \end{enumerate}
+
+  \item
+    \textbf{Color perturbations} consisted of modifying the brightness, contrast, saturation, and hue by $\pm 50\%$, $\pm 30\%$, $\pm 30\%$, and hue factor $\pm 0.05$, respectively, and adding zero-mean Gaussian noise to each channel of every pixel.
+    Each channel value ranges between 0 and 1, so we chose 0.1 as the noise standard deviation.
+    These variations were chosen heuristically so that the perturbed images sufficiently resembled the source image.
+    The purpose of the Gaussian noise is to model high-frequency content that characterizes misclassified inputs in gradient-based attacks.
+  \end{enumerate}
+
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/perturb.png}
+    \caption{
+      Example of randomly applied spatial and color perturbations.
+      The original image (ground truth) is shown in the upper left corner.
+    }
+  \end{figure}
+
+  We also tried random erasures, where randomly selected boxes of pixels were colored black.
+  Like dropout, the erasures would encourage the classifier to learn a diverse set of features, leading to better generalization.
+  However, in practice, the erasures often hid portions of the image salient to classification and the classifier was effectively training on very noisy images.
+  We can view erasure as a very strong regularizer that hindered the ability of the network effectively, causing validation accuracy to plateau.
 
   \subsection{Models}
+
+  \subsubsection{Classifier}
 
   Existing deep neural networks for image classification, such as ResNet50, already offer very good feature extraction for generic tasks.
   Therefore, we used
 
-  In order to
+  \subsubsection{Denoising Network}
+
+  In signal processing, it is common to use filters, often designed by hand using domain knowledge to meet some specifications, to reduce noise in the raw data and make analyses more interpretable.
+  Inspired by this paradigm, we introduced a small CNN with residual connections---a denoising network---to preprocess images before classification.
+
+  The denoising network attempts to undo the color perturbations
+
+  Perturbations
+  In order to mitigate adversarial perturbations, some
 
   \begin{figure}[H]
     \centering
@@ -93,22 +139,32 @@
     \end{split}
   \end{equation}
 
-  \begin{enumerate}
-  \item Augment the dataset with rotated, shifted, scaled (input perturbations)
-  \item Add noise (AWGN, one-shot, patches), train denoising network
-  \item ResNet-like architecture
   %+ Additive white Gaussian noise layers?
   % denoising layers?
   % compression?
   % ensembles
   % \item FGSM-generated samples
-  \end{enumerate}
 
   \section{Results}
+
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/denoise.png}
+    \caption{
+      Example of denoise network output.
+      Note that the error is low in the uniform regions of the man's jacket and concentrated where the highly detailed regions are---the man's face and instrument.
+      This example suggests the denoising network learned a lowpass filter to blur the input.
+    }
+  \end{figure}
 
   \section{Tools}
 
   We implemented our models in \href{https://pytorch.org/}{PyTorch}, a popular deep learning framework that offers standardized, performant implementations of learning primitives such as tensors, fully connected and convolutional layers, optimizers, and loss functions.
+  Off-the-shelf support for training on GPUs made training high-capacity models computationally feasible.
+
+  PyTorch also has a vision submodule with common image transformations, which we used extensively in our data augmentation, and parameters for popular pretrained models.
+  From our experiments, models trained from scratch tended to underperform pretrained models whose final fully connected layer we could fine-tune.
+  We hypothesize this performance gap exists because the early convolutional layers of the pretrained model have been trained on larger and more diverse datasets, so its layers are better at recognizing common low-level features of images like edges.
 
   \section{Lessons Learned}
 

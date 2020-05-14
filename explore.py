@@ -54,7 +54,7 @@ def main():
         color_transform,
         transforms.ToTensor(),
         noise_transform,
-        transforms.RandomErasing(scale=(0.02, 0.2), ratio=(0.5, 2)),
+        # transforms.RandomErasing(scale=(0.02, 0.2), ratio=(0.5, 2)),
         transforms.ToPILImage(),
     ])
 
@@ -84,9 +84,9 @@ def main():
     axes[0, 0].imshow(to_image(denoise_input[0]))
     axes[0, 0].set_title('Input (No Perturbation)')
 
-    denoise_output = denoise_model(denoise_input)
-    axes[0, 1].imshow(to_image(torch.clamp(denoise_output[0], 0, 1)))
-    axes[0, 1].set_title('Output (No Perturbation)')
+    # denoise_output = denoise_model(denoise_input)
+    # axes[0, 1].imshow(to_image(torch.clamp(denoise_output[0], 0, 1)))
+    # axes[0, 1].set_title('Output (No Perturbation)')
 
     denoise_input = transforms.Compose([
         to_image,
@@ -94,12 +94,16 @@ def main():
         transforms.ToTensor(),
         noise_transform,
     ])(denoise_input[0])[None, :]
-    axes[1, 0].imshow(to_image(denoise_input[0]))
-    axes[1, 0].set_title('Input (Color Perturbation)')
+    axes[0, 1].imshow(to_image(denoise_input[0]))
+    axes[0, 1].set_title('Input (Color Perturbation)')
 
     denoise_output = denoise_model(denoise_input)
-    axes[1, 1].imshow(to_image(torch.clamp(denoise_output[0], 0, 1)))
-    axes[1, 1].set_title('Output (Color Perturbation)')
+    denoise_output = torch.clamp(denoise_output[0], 0, 1)
+    axes[1, 0].imshow(to_image(denoise_output))
+    axes[1, 0].set_title('Output')
+
+    axes[1, 1].imshow(to_image(5*(denoise_output - denoise_input[0])))
+    axes[1, 1].set_title('10x Error')
 
     for ax in axes.flatten():
         ax.axis('off')
@@ -107,7 +111,7 @@ def main():
     plt.suptitle('Denoise Network', fontsize=20)
     plt.tight_layout()
     plt.subplots_adjust(top=0.9)
-    plt.savefig('report/figures/denoise.png', dpi=200, transparent=True)
+    # plt.savefig('report/figures/denoise.png', dpi=200, transparent=True)
     plt.show()
 
 
