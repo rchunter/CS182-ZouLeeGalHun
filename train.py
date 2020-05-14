@@ -32,8 +32,6 @@ def JPEGCompression(image):
     output.seek(0)
     return Image.open(output)
 
-
-
 spatial_transforms = transforms.Compose([
     transforms.RandomChoice([
         transforms.Compose([
@@ -68,6 +66,8 @@ def parse_options():
     parser.add_argument('--weight-decay', type=float, default=1e-5, help='optimizer weight decay')
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--max-epochs', type=int, default=10, help='max training passes')
+    parser.add_argument('--jpeg', type=bool, default=False, help='use jpeg compression preprocessing')
+    parser.add_argument('--crop-ensemble', type=bool, default=False, help='use crop ensemble preprocessing')
     options = parser.parse_args()
 
     now = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
@@ -125,24 +125,38 @@ def initialize_logging(options):
 
 
 def load_datasets(options):
-    train_transforms = [
-        transforms.Resize(256, interpolation=Image.LANCZOS),
-        transforms.RandomChoice([transforms.CenterCrop(224), spatial_transforms]),
-    ]
     if options.model == 'denoise':
-        train_transforms.append(transforms.ToTensor())
+        train_transforms = [
+            transforms.Resize(256, interpolation=Image.LANCZOS),
+            transforms.RandomChoice([transforms.CenterCrop(224), spatial_transforms]),
+            transforms.ToTensor() 
+        ]
         test_transforms = train_transforms
     else:
+        train_transforms = [transforms.Resize(224)]
+        test_transforms = [transforms.Resize(256)]
+        if options.jpeg:
+            train_transforms.append(jpeg_transform)
+            test_transforms.append(jpeg_transform)
+        train_transforms.append(color_transform)
+        if options.crop_ensemble:
+            train_transforms.append(transforms.Compose([
+                transforms.FiveCrop(224),
+                transforms.Lambda(lambda crops: torch.stack([ToTensor()(crop) for crop in crops]))
+            ]))
+            test_transforms.append(transforms.Compose([
+                transforms.FiveCrop(224),
+                transforms.Lambda(lambda crops: torch.stack([ToTensor()(crop) for crop in crops]))
+            ]))
+        else:
+            test_transforms.append(transforms.CenterCrop(224))
         train_transforms.extend([
-            color_transform,
             transforms.ToTensor(),
             noise_transform,
             transforms.RandomErasing(scale=(0.02, 0.2), ratio=(0.5, 2)),
             normalize_transform,
         ])
-        test_transforms = [
-            transforms.Resize(256, interpolation=Image.LANCZOS),
-            transforms.CenterCrop(224),
+        test_transforms += [
             transforms.ToTensor(),
             normalize_transform,
         ]
@@ -161,14 +175,21 @@ class Trainer:
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     rounding: int = 4
 
-    def __init__(self, model, criterion, optimizer, lr_scheduler=None, print_every: int = 200):
+    def __init__(self, model, criterion, optimizer, lr_scheduler=None, print_every: int = 200, options=None):
+        self.options = options
         self.model, self.criterion = model, criterion
         self.optimizer, self.lr_scheduler = optimizer, lr_scheduler
         self.total, self.losses = 0, []
         self.print_every = print_every
 
     def forward(self, inputs, targets):
-        outputs = self.model(inputs)
+
+        if self.options is not None and self.options.crop_ensemble:
+            bs, ncrops, c, h, w = inputs.size()
+            outputs = self.model(input.view(-1, c, h, w))
+            outputs = outputs.view(bs, ncrops, -1).mean(1)
+        else:
+            outputs = self.model(inputs)
         loss = self.criterion(outputs, targets)
         self.losses.append(loss.item())
         return outputs, loss
@@ -283,7 +304,7 @@ class DenoiseNetTrainer(Trainer):
 
 def train(train_set, val_set, test_set, labels, options, trainer_cls=ClassificationTrainer):
     loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
-                               pin_memory=True, num_workers=4,
+                               pin_memory=True, num_workers=8,
                                batch_size=options.batch_size)
     train_loader, val_loader = loader(train_set), loader(val_set)
 
@@ -291,7 +312,7 @@ def train(train_set, val_set, test_set, labels, options, trainer_cls=Classificat
         model, trainer_cls = visionmodel.DenoiseNet(), DenoiseNetTrainer
         params = model.parameters()
         criterion = torch.nn.MSELoss()
-    else:
+    elif options.model == 'resnet':
         model = torchvision.models.resnet50(pretrained=True)
         trainer_cls = ClassificationTrainer
         for param in model.parameters():
@@ -303,7 +324,16 @@ def train(train_set, val_set, test_set, labels, options, trainer_cls=Classificat
         )
         params = model.fc.parameters()
         criterion = torch.nn.CrossEntropyLoss()
-
+    elif options.model == 'mobilenet':
+        model = torchvision.models.mobilenet_v2(pretrained=True)
+        trainer_cls = ClassificationTrainer
+        model.classifier = torch.nn.Sequential(
+            torch.nn.Dropout(0.2),
+            torch.nn.Linear(model.last_channel, len(labels))
+        )
+        params = model.parameters()
+        criterion = torch.nn.CrossEntropyLoss()
+    
     model.to(Trainer.device)
     optimizer = torch.optim.Adam(params, lr=options.lr,
                                  weight_decay=options.weight_decay)
@@ -312,7 +342,7 @@ def train(train_set, val_set, test_set, labels, options, trainer_cls=Classificat
                                                           gamma=options.lr_decay)
 
     trainer = trainer_cls(model, criterion, optimizer, print_every=options.print_every,
-                          lr_scheduler=lr_scheduler)
+                          lr_scheduler=lr_scheduler, options=options)
     best_weights = trainer.train(options.max_epochs, train_loader, val_loader)
     torch.save({'net': best_weights}, options.params)
     log.info('Saved weights')

@@ -56,8 +56,8 @@ def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, optio
 
     # Generate adverserial samples from test set
     # Adverserial samples are FSGM on exposed model
-    for data, target in test_loader:
-        print(f'\rFound {len(adv_examples)} adverserial examples', end='')
+    for idx, (data, target) in enumerate(test_loader):
+        print(f'\rOf {idx} images, found {len(adv_examples)} adverserial examples', end='')
         if len(adv_examples) >= 200:
             break
 
@@ -80,10 +80,6 @@ def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, optio
         final_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
         if final_pred.item() == target.item():
             correct += 1
-            # Special case for saving 0 epsilon examples
-            if (epsilon == 0) and (len(adv_examples) < 5):
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), target.item(), adv_ex) )
         else:
             # Save some adv examples for visualization later
             if len(adv_examples) < 200:
@@ -116,10 +112,10 @@ def fsgm_test(model, device, test_loader, epsilon, preprocess, midprocess, optio
     final_acc = correct/200.
     print("Epsilon: {}\tRobust Test Accuracy = {} / {} = {}".format(epsilon, correct, 200, final_acc))
 
-def test(options, epsilons=[0, .05, .1, .15, .2, .25, .3]):
+def test(options, epsilons=[.25, .3]):
     # Create data loaders
     loader = functools.partial(torch.utils.data.DataLoader, shuffle=True,
-                            pin_memory=True, num_workers=4,
+                            pin_memory=True, num_workers=8,
                             batch_size=1)
     test_set = torchvision.datasets.ImageFolder(str(cwd/options.dataset/'val'),
                                                 transform=transforms.ToTensor())
@@ -132,7 +128,7 @@ def test(options, epsilons=[0, .05, .1, .15, .2, .25, .3]):
         transforms.ToTensor(),
     ])
 
-    intermediate_transforms = []
+    intermediate_transforms = [transforms.ToPILImage]
     if options.jpeg:
         intermediate_transforms += [transforms.Lambda(JPEGCompression)]
     intermediate_transforms += [
@@ -146,11 +142,16 @@ def test(options, epsilons=[0, .05, .1, .15, .2, .25, .3]):
         ])]
     intermediate_transforms = transforms.Compose(intermediate_transforms)
 
-
     device = torch.device('cuda:0' if False and torch.cuda.is_available() else 'cpu')
     
     # Model
-    model = torchvision.models.resnet50(pretrained=True)
+    if options.model == 'resnet':
+        model = torchvision.models.resnet50(pretrained=True)
+    elif options.model == 'mobilenet':
+        model = torchvision.models.mobilenet_v2(pretrained=True)
+
+    model.to(device)
+    model.eval()
 
     for eps in epsilons:
         fsgm_test(model, device, test_loader, eps, preprocessing_transforms, intermediate_transforms, options)
