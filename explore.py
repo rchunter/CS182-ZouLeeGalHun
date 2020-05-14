@@ -1,4 +1,5 @@
 import pathlib
+import json
 import random
 
 from PIL import Image
@@ -42,6 +43,25 @@ def show_perturbations(image, transform, rows: int = 4, columns: int = 4):
     plt.subplots_adjust(top=0.9)
 
 
+def plot_denoise():
+    losses = []
+    batches_per_epoch = (100000 + 15)//16
+    with open('logs/denoise-final.log') as log_file:
+        for line in log_file:
+            data = json.loads(line)
+            losses.append(data['loss'])
+    plt.style.use('seaborn')
+    plt.figure(figsize=(8, 4))
+    plt.plot(100*(1 + np.arange(len(losses))), 10*np.log10(9*224*224/np.array(losses)))
+    plt.title('Denoise Network PSNR Over Time (One Epoch)')
+    plt.xlim(80, batches_per_epoch)
+    plt.xlabel('Minibatch Number')
+    plt.ylabel('PSNR [dB]')
+    plt.tight_layout()
+    plt.savefig('report/figures/denoise-psnr.png', dpi=200)
+    plt.show()
+
+
 def main():
     cwd = pathlib.Path('.')
     train_path = str(cwd/'data/tiny-imagenet-200/train')
@@ -71,8 +91,6 @@ def main():
     plt.tight_layout()
     plt.savefig('report/figures/dct.png', dpi=200, transparent=True)
     plt.show()
-
-    return
 
     image = train_set[random.randrange(len(train_set))][0]
 
@@ -144,4 +162,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    plot_denoise()

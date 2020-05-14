@@ -45,7 +45,8 @@
     }
   \end{figure}
 
-  The metrics we considered were top-1 and top-5 accuracy on the validation set.
+  The metrics we considered for the classifier were top-1 and top-5 accuracy on the validation set.
+  For the auxiliary denoising network that we will describe, we considered the peak signal-to-noise ratio (PSNR)---a proxy for mean squared error (MSE)---between a reference image and output image.
 
   \section{Approach}
   % Assumptions, definitions, objective
@@ -101,15 +102,15 @@
   Inspired by this paradigm, we introduced a small CNN with residual connections---a denoising network---to preprocess images before classification.
 
   The denoising network architecture shown in Figure \ref{fig:denoise}) attempts to undo the color perturbations introduced during data augmentation.
-  The network's loss function is the mean squared error (MSE) between $I_0$, a reference image without the color perturbation $\delta I$, and the network output $I$.
-  We can use the MSE to estimate the peak signal-to-noise ratio (PSNR), a nonnegative quantity measured in decibels (dB) that increases as $I \to I_0$ (\textit{i.e.}, the denoising network undoes the perturbation $\delta I$) and goes to zero when the MSE is maximized.
+  The network's loss function is the MSE between $I_0$, a reference image without the color perturbation $\delta I$, and the network output $I$.
+  We can use the MSE to estimate the PSNR, a nonnegative quantity measured in decibels (dB) that increases as $I \to I_0$ (\textit{i.e.}, the denoising network undoes the perturbation $\delta I$) and goes to zero when the MSE is maximized.
   \begin{equation}
     \begin{split}
-      \mathsf{MSE}(I_0, I) &= \frac{1}{MN} \sum_{(x, y, c)} \left(I_0(x, y, c) - I(x, y, c)\right)^2 \leq 3^2 \\
+      \mathsf{MSE}(I_0, I) &= \frac{1}{224 \times 224} \sum_{(x, y, c)} \left(I_0(x, y, c) - I(x, y, c)\right)^2 \leq 3^2 \\
       \mathsf{PSNR}(I_0, I) &= 10 \log_{10} \left(\frac{3^2}{\mathsf{MSE}(I_0, I)}\right)
     \end{split}
   \end{equation}
-  We use $(M, N)$ to denote the width and height of the image, and $I_0(x, y, c) \in [0, 1]$ to denote the reference image's value at row $y$, column $x$, and channel $c$.
+  $I_0(x, y, c) \in [0, 1]$ denotes the reference image's value at row $y$, column $x$, and channel $c$.
 
   \begin{figure}[H]
     \centering
@@ -161,14 +162,37 @@
 
   \section{Results}
 
+  \subsection{Denoising Network}
+
+  We trained the denoising network with the Adam optimizer, with a learning rate of $10^{-5}$, exponential learning rate decay of $0.9$ per epoch, weight decay of $10^{-5}$, and batch size of $16$.
+  Given that the model is relatively simple and that the loss plateaus, we only needed to train the network for two epochs.
+  The training PSNR over time is shown in Figure \eqref{fig:denoise-psnr} (the $\log_{10}$ scale better captures changes in performance than MSE).
+
+  The validation set images were perturbed identically to their counterparts in the training set.
+  After the first epoch of training, the MSE over the entire validation set was 0.0132 (a PSNR of 75.3) and after the second, the validation MSE was 0.0128 (for a PSNR of 75.5).
+  The network stopped improving.
+
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/denoise-psnr}
+    \caption{Denoising PSNR over time during training.}
+    \label{fig:denoise-psnr}
+  \end{figure}
+
+  A example of the denoising network output image is shown in Figure \ref{eq:denoise-example}.
+  Judging from the solid background, the denoising network appears to filter out Gaussian noise successfully as well as correct for the increased brightness to some degree.
+  This agrees with the high PSNR the model achieved on the validation set was able to achieve.
+
+  Note that the error is low in the uniform regions of the man's jacket and concentrated where the highly detailed regions are---the man's face and instrument.
+  This example suggests the denoising network learned a lowpass filter to blur the input.
+
   \begin{figure}[H]
     \centering
     \includegraphics[width=0.6\textwidth]{figures/denoise.png}
     \caption{
       Example of denoise network output.
-      Note that the error is low in the uniform regions of the man's jacket and concentrated where the highly detailed regions are---the man's face and instrument.
-      This example suggests the denoising network learned a lowpass filter to blur the input.
     }
+    \label{eq:denoise-example}
   \end{figure}
 
   \section{Tools}
@@ -192,6 +216,6 @@
   \item
     Jonathan Lee built, trained, and evaluated the denoising network.
     He wrote the training script and designed the perturbations.
-    Estimated contribution: 35\%.
+    Estimated contribution: 40\%.
   \end{itemize}
 \end{document}
