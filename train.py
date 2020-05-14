@@ -261,7 +261,7 @@ class DenoiseNetTrainer(Trainer):
     @property
     def statistics(self, height=224, width=224):
         stats = super().statistics
-        return {**stats, 'psnr': round(10*np.log10(3*height*width/stats['loss']), self.rounding)}
+        return {**stats, 'psnr': round(20*np.log10(3*height*width/stats['loss']), self.rounding)}
 
     def transform_batch(self, inputs, _targets):
         targets = inputs.to(self.device)
