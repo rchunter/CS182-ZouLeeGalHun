@@ -62,6 +62,14 @@ def plot_denoise():
     plt.show()
 
 
+def plot_train():
+    with open('logs/mobilenet-final.log') as log_file:
+        mode = 'train'
+        for line in log_file:
+            if line['event'] == 'Update':
+            pass
+
+
 def main():
     cwd = pathlib.Path('.')
     train_path = str(cwd/'data/tiny-imagenet-200/train')
@@ -163,4 +171,4 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    plot_denoise()
+    # plot_denoise()

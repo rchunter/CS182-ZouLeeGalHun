@@ -1,5 +1,1 @@
-0,data/tiny-imagenet-200/test/images/test_0.JPEG,64,64,3
-1,data/tiny-imagenet-200/test/images/test_1.JPEG,64,64,3
-2,data/tiny-imagenet-200/test/images/test_2.JPEG,64,64,3
-3,data/tiny-imagenet-200/test/images/test_3.JPEG,64,64,3
-4,data/tiny-imagenet-200/test/images/test_4.JPEG,64,64,3
+0,data/tiny-imagenet-200/val/n01443537/val_1230.JPEG,64,64,3

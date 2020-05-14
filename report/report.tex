@@ -14,7 +14,7 @@
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
-    filecolor=magenta,
+    citecolor=blue,
     urlcolor=blue,
 }
 
@@ -30,6 +30,13 @@
 
   \section{Problem Statement and Background}
   % Motivation, related work, summary of contribution, results
+
+  The problem we tackled was computer vision classification, where real world images are identified with a neural network.
+  The largest hurdle in this project was we don’t know what images the network will be tested on; they may be perturbed, warped and noisy. So, the main priority for this project was building a classifier that is robust enough to handle any of those disturbances, and produce accurate results regardless. Robust image classification is an important problem in many fields, such as self driving cars, where signs need to be identified just as accurately on a rainy or foggy day as on a bright sunny one, and in automated moderation, where unsuitable imagery needs to be detected and removed even if its been overlaid or filtered.
+
+  We considered a number of computer vision models and architectures to approach this problem, including Mobilenet \cite{Sandler_2018}, Resnet \cite{7780459}, Alexnet \cite{NIPS2012_4824}, VGG \cite{simonyan2014deep}, and DenseNet \cite{i2014densenet}. All of these models have been trained on, and performed well on, the ImageNet dataset. Our project dataset, Tiny ImageNet, is a sort of scaled down version of that dataset, so we thought it would be a good jumping off point.
+
+  \subsection{Datasets and Metrics}
 
   The dataset we used is the tiny ImageNet dataset, which is already partitioned into training, test, and validation sets containing 100,000, 10,000, and 10,000 samples each, respectively.
   Each sample is a $64 \times 64$ RGB image that can belong to one of 200 classes.
@@ -93,7 +100,7 @@
 
   \subsubsection{Classifier}
 
-  Existing deep neural networks for image classification, such as ResNet50, already offer very good feature extraction for generic tasks.
+  Existing deep neural networks for image classification already offer very good feature extraction for generic tasks.
   Therefore, we used
 
   \subsubsection{Denoising Network}
@@ -110,7 +117,7 @@
       \mathsf{PSNR}(I_0, I) &= 10 \log_{10} \left(\frac{3^2}{\mathsf{MSE}(I_0, I)}\right)
     \end{split}
   \end{equation}
-  $I_0(x, y, c) \in [0, 1]$ denotes the reference image's value at row $y$, column $x$, and channel $c$.
+  $I_0(x, y, c) \in [0, 1]$ denotes the reference image's value at row $1 \leq y \leq 224$, column $1 \leq x \leq 224$, and channel $1 \leq c \leq 3$.
 
   \begin{figure}[H]
     \centering
@@ -198,16 +205,25 @@
   \section{Tools}
 
   We implemented our models in \href{https://pytorch.org/}{PyTorch}, a popular deep learning framework that offers standardized, performant implementations of learning primitives such as tensors, fully connected and convolutional layers, optimizers, and loss functions.
-  Off-the-shelf support for training on GPUs made training high-capacity models computationally feasible.
+  Off-the-shelf support for GPUs made training high-capacity models computationally feasible.
+
+  % We also used Google Colab for model training as they provide free compute-optimized resources such as GPUs (K80s, P100s, among others). Some training was also performed in Google Compute Engine and AWS EC2 instances, utilizing V100 GPUs. Also, PyTorch Tutorials from pytorch.org are launchable in Colab which was helpful for testing new ideas and getting a grasp on the API.
 
   PyTorch also has a vision submodule with common image transformations, which we used extensively in our data augmentation, and parameters for popular pretrained models.
-  From our experiments, models trained from scratch tended to underperform pretrained models whose final fully connected layer we could fine-tune.
-  We hypothesize this performance gap exists because the early convolutional layers of the pretrained model have been trained on larger and more diverse datasets, so its layers are better at recognizing common low-level features of images like edges.
+  % From our experiments, models trained from scratch tended to underperform models pretrained on diverse datasets whose final fully connected layer we could fine-tune.
+  % We hypothesize this performance gap exists because the early convolutional layers of the pretrained model have been trained on larger and more diverse datasets, so its layers are better at recognizing common low-level features of images like edges.
+
+  We used Google Colab and virtual machines from Amazon Web Services and Google Cloud Platform for accelerating training with NVIDIA's Tesla V100 and P4 GPUs.
 
   \section{Lessons Learned}
 
-  Selecting a bad learning rate can cause a model to fail to make full use of its capacity.
-  Na\"{i}ve schemes like an exponentially decaying learning rate did not work particularly well because it's hard to tell \textit{a priori} what the base learning rate and the decay rate should be.
+  In summary, we have learned that data augmentation has a regularizing effect by effectively generating new training samples from the existing ones, which lowers overall model variance.
+  Of course, the tradeoff is that the augmented samples may not accurately reflect either the original training set or the validation or test sets, as was the case with erasures, which injects noise into training and can hinder learning.
+
+  We
+
+  % Selecting a bad learning rate can cause a model to fail to make full use of its capacity.
+  % Na\"{i}ve schemes like an exponentially decaying learning rate did not work particularly well because it's hard to tell \textit{a priori} what the base learning rate and the decay rate should be.
   % Adaptive schemes, such as the one-cycle learning rate policy, tended to work better because
 
   \section{Team Contributions}
@@ -218,4 +234,13 @@
     He wrote the training script and designed the perturbations.
     Estimated contribution: 40\%.
   \end{itemize}
+
+  The code for this project is hosted on GitHub: \texttt{https://github.com/rchunter/CS182-ZouLeeGalHun}.
+
+  The model parameters are located in this Google Drive folder:
+
+  \texttt{https://drive.google.com/drive/u/1/folders/13K4ztT7Z2v7TYJgB1g0KPVCRp1u-K4tC}
+
+  \bibliographystyle{unsrt}
+  \bibliography{report}
 \end{document}
