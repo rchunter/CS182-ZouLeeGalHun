@@ -31,6 +31,22 @@
   \section{Problem Statement and Background}
   % Motivation, related work, summary of contribution, results
 
+  The dataset we used is the tiny ImageNet dataset, which is already partitioned into training, test, and validation sets containing 100,000, 10,000, and 10,000 samples each, respectively.
+  Each sample is a $64 \times 64$ RGB image that can belong to one of 200 classes.
+  Nearly all the images are natural (photographs) and not synthetic, so most images have spectral content concentrated around low frequencies.
+
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/dct}
+    \caption{
+      Average power spectrum (on a $\log_{10}$-scale) of $8 \times 8$ blocks from 200 randomly selected images from the training set.
+      Obtained by mapping each image into a luminescence layer and taking the Discrete Cosine Transform (DCT) of each block.
+      The upper left corner depicts strong DC content in both spatial dimensions, and the lower right corner depicts sparse high-frequency content.
+    }
+  \end{figure}
+
+  The metrics we considered were top-1 and top-5 accuracy on the validation set.
+
   \section{Approach}
   % Assumptions, definitions, objective
 
@@ -43,7 +59,7 @@
     \textbf{Spatial perturbations} consisted of horizontal and vertical reflections, each occurring independently with probability $0.5$, and either a rotation or a crop, which were equally likely:
     \begin{enumerate}[(i)]
     \item
-      A rotation involved padding the image by 60 pixels on all sides using reflection, rotating by a random number of degrees (uniformly chosen in the range $-180^\circ, +180^\circ$), and cropping to the centermost $224 \times 244$ pixels.
+      A rotation involved padding the image by 60 pixels on all sides using reflection, rotating by a random number of degrees (uniformly chosen in the range $-180^\circ, +180^\circ$), and cropping to the centermost $224 \times 224$ pixels.
       The padding ensures the corners of the rotated image are always filled with pixels that resemble the boundary of the original image, as opposed to having those unused pixels zeroed out.
 
     \item
@@ -84,10 +100,16 @@
   In signal processing, it is common to use filters, often designed by hand using domain knowledge to meet some specifications, to reduce noise in the raw data and make analyses more interpretable.
   Inspired by this paradigm, we introduced a small CNN with residual connections---a denoising network---to preprocess images before classification.
 
-  The denoising network attempts to undo the color perturbations
-
-  Perturbations
-  In order to mitigate adversarial perturbations, some
+  The denoising network architecture shown in Figure \ref{fig:denoise}) attempts to undo the color perturbations introduced during data augmentation.
+  The network's loss function is the mean squared error (MSE) between $I_0$, a reference image without the color perturbation $\delta I$, and the network output $I$.
+  We can use the MSE to estimate the peak signal-to-noise ratio (PSNR), a nonnegative quantity measured in decibels (dB) that increases as $I \to I_0$ (\textit{i.e.}, the denoising network undoes the perturbation $\delta I$) and goes to zero when the MSE is maximized.
+  \begin{equation}
+    \begin{split}
+      \mathsf{MSE}(I_0, I) &= \frac{1}{MN} \sum_{(x, y, c)} \left(I_0(x, y, c) - I(x, y, c)\right)^2 \leq 3^2 \\
+      \mathsf{PSNR}(I_0, I) &= 10 \log_{10} \left(\frac{3^2}{\mathsf{MSE}(I_0, I)}\right)
+    \end{split}
+  \end{equation}
+  We use $(M, N)$ to denote the width and height of the image, and $I_0(x, y, c) \in [0, 1]$ to denote the reference image's value at row $y$, column $x$, and channel $c$.
 
   \begin{figure}[H]
     \centering
@@ -128,16 +150,8 @@
       Denoising network architecture.
       All convolutional blocks use stride 1 and padding such that the spatial dimensions are preserved.
     }
+    \label{fig:denoise}
   \end{figure}
-
-  The denoinsing network uses mean squared error (MSE) as its loss function.
-  We can use the MSE to estimate the peak signal-to-noise ratio (PSNR), a nonnegative quantity measured in decibels (dB) that increases as $I \to I_0$ (\textit{i.e.}, the denoising network undoes the perturbation $\delta I$) and goes to zero when the MSE is maximized.
-  \begin{equation}
-    \begin{split}
-      \mathsf{MSE}(I_0, I) &= \frac{1}{MN} \sum_{(x, y, c)} \left(I_0(x, y, c) - I(x, y, c)\right)^2 \\
-      \mathsf{PSNR}(I_0, I) &= 10 \log_{10} \left(\frac{3^2}{\mathsf{MSE}(I_0, I)}\right)
-    \end{split}
-  \end{equation}
 
   %+ Additive white Gaussian noise layers?
   % denoising layers?

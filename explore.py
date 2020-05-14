@@ -4,6 +4,7 @@ import random
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.fftpack
 import torch
 import torchvision
 from torchvision import transforms
@@ -46,6 +47,33 @@ def main():
     train_path = str(cwd/'data/tiny-imagenet-200/train')
     train_set = torchvision.datasets.ImageFolder(train_path)
 
+    samples = [np.array(train_set[random.randrange(len(train_set))][0].convert('L')) for _ in range(100)]
+    dct = np.empty((8, 8), dtype=np.float64)
+    n = 0
+    for sample in samples:
+        for row in range(0, 64, 8):
+            for column in range(0, 64, 8):
+                n += 1
+                block = sample[row : row+8, column : column+8].astype(np.float64)
+                block = scipy.fftpack.dct(block, axis=0)
+                block = scipy.fftpack.dct(block, axis=1)
+                dct += np.abs(block)
+
+    # print(dct)
+    plt.figure(figsize=(4, 4))
+    plt.imshow(np.log10(dct), cmap='plasma')
+    plt.xticks([])
+    plt.yticks([])
+    plt.grid(False)
+    plt.title('Discrete Cosine Transform Coefficients')
+    plt.xlabel('Horizontal Index')
+    plt.ylabel('Vertical Index')
+    plt.tight_layout()
+    plt.savefig('report/figures/dct.png', dpi=200, transparent=True)
+    plt.show()
+
+    return
+
     image = train_set[random.randrange(len(train_set))][0]
 
     data_transforms = transforms.Compose([
@@ -59,7 +87,7 @@ def main():
     ])
 
     show_perturbations(image, data_transforms)
-    plt.savefig('report/figures/perturb.png', dpi=200, transparent=True)
+    # plt.savefig('report/figures/perturb.png', dpi=200, transparent=True)
     plt.show()
 
     # Denoise Network
