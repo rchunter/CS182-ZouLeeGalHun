@@ -65,9 +65,41 @@ def plot_denoise():
 def plot_train():
     with open('logs/mobilenet-final.log') as log_file:
         mode = 'train'
+        train_ctr, val_ctr = 0, 0
+        train_accuracy, val_accuracy = [], []
+        train_top_accuracy, val_top_accuracy = [], []
         for line in log_file:
-            if line['event'] == 'Update':
-            pass
+            line = json.loads(line)
+            if line['event'] == 'Validation phase':
+                mode = 'valid'
+            elif line['event'] == 'Training phase':
+                mode = 'train'
+            elif line['event'] == 'Update':
+                if mode == 'valid':
+                    val_ctr += 500
+                    train_accuracy.append(line['accuracy'])
+                    train_top_accuracy.append(line['top_accuracy'])
+                else:
+                    train_ctr += 500
+                    val_accuracy.append(line['accuracy'])
+                    val_top_accuracy.append(line['top_accuracy'])
+
+    fig, axes = plt.subplots(2, 1, figsize=(8, 6))
+    axes[0].set_title('Training Accuracy Over Time')
+    axes[0].plot(500 + 500*np.arange(len(train_accuracy)), train_accuracy, label='Top-1 Accuracy')
+    axes[0].plot(500 + 500*np.arange(len(train_top_accuracy)), train_top_accuracy, label='Top-5 Accuracy')
+    axes[0].set_xlabel('Batch number')
+    axes[0].set_ylabel('Percentage')
+    axes[0].legend()
+    axes[1].set_title('Validation Accuracy Over Time')
+    axes[1].plot(500 + 500*np.arange(len(val_accuracy)), val_accuracy, label='Top-1 Accuracy')
+    axes[1].plot(500 + 500*np.arange(len(val_top_accuracy)), val_top_accuracy, label='Top-5 Accuracy')
+    axes[1].legend()
+    axes[1].set_xlabel('Batch number')
+    axes[1].set_ylabel('Percentage')
+    plt.tight_layout()
+    plt.savefig('report/figures/training.png', dpi=200)
+    plt.show()
 
 
 def main():
@@ -172,3 +204,4 @@ def main():
 if __name__ == '__main__':
     # main()
     # plot_denoise()
+    plot_train()

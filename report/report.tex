@@ -101,7 +101,8 @@
   \subsubsection{Classifier}
 
   Existing deep neural networks for image classification already offer very good feature extraction for generic tasks.
-  Therefore, we used
+  Therefore, we used a pretrained MobileNet-V2 with cross-entropy loss and a final fine-tuned fully connected layer for our classifier.
+  The final layer was retrained for 10 epochs using SGD with a learning rate of 0.001, momentum of 0.9, and cross entropy loss.
 
   \subsubsection{Denoising Network}
 
@@ -169,6 +170,20 @@
 
   \section{Results}
 
+  \subsection{Classifier}
+
+  The accuracy metrics for the MobileNet-v2 over time is shown in the Figure \ref{fig:mobile}.
+  Unfortunately, the final accuracy on the validation set with the two networks together was about 41.26\%, so we excluded the denoising network from the final model.
+  We hypothesize this is because we did not train the two networks end-to-end, and instead trained the two networks separately.
+  Therefore, the distribution of images the MobileNet was trained might have differed substantially from the distribution of images at the denoising network output.
+
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/training}
+    \caption{Classifier top-1 and top-5 accuracy over time.}
+    \label{fig:mobile}
+  \end{figure}
+
   \subsection{Denoising Network}
 
   We trained the denoising network with the Adam optimizer, with a learning rate of $10^{-5}$, exponential learning rate decay of $0.9$ per epoch, weight decay of $10^{-5}$, and batch size of $16$.
@@ -220,7 +235,8 @@
   In summary, we have learned that data augmentation has a regularizing effect by effectively generating new training samples from the existing ones, which lowers overall model variance.
   Of course, the tradeoff is that the augmented samples may not accurately reflect either the original training set or the validation or test sets, as was the case with erasures, which injects noise into training and can hinder learning.
 
-  We
+  Preprocessing data is costly and presents a lot of overhead.
+  It's important to be extremely selective when attempting to make a robust network, especially when the model is expected to be deployed and be used to infer real-time.
 
   % Selecting a bad learning rate can cause a model to fail to make full use of its capacity.
   % Na\"{i}ve schemes like an exponentially decaying learning rate did not work particularly well because it's hard to tell \textit{a priori} what the base learning rate and the decay rate should be.
@@ -232,7 +248,15 @@
   \item
     Jonathan Lee built, trained, and evaluated the denoising network.
     He wrote the training script and designed the perturbations.
-    Estimated contribution: 40\%.
+    Estimated contribution: 37\%.
+
+  \item
+    Eero: Implemented ability to include JPEG and crop ensemble data transforms and trained a series of models.
+    Estimated contribution: 32\%.
+
+  \item
+    Rowen: Trained a series of models using feature extraction and fine tuning on training torchvision models. Created an ensemble architecture to use those submodels.
+    Estimated contribution: 31\%.
   \end{itemize}
 
   The code for this project is hosted on GitHub: \texttt{https://github.com/rchunter/CS182-ZouLeeGalHun}.
