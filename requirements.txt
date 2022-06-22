@@ -1,5 +1,5 @@
 colorama==0.4.3
-numpy==1.18.4
+numpy==1.22.0
 Pillow==7.1.2
 scipy==1.4.1
 structlog==20.1.0
